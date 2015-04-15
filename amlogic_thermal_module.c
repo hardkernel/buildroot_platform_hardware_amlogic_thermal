@@ -1021,6 +1021,31 @@ static const struct of_device_id amlogic_thermal_match[] = {
     },
 };
 
+#ifdef CONFIG_HIBERNATION
+static int amlogic_thermal_freeze(struct device *dev)
+{
+    return 0;
+}
+
+static int amlogic_thermal_thaw(struct device *dev)
+{
+    return 0;
+}
+
+static int amlogic_thermal_restore(struct device *dev)
+{
+    thermal_firmware_init();
+
+    return 0;
+}
+
+static struct dev_pm_ops amlogic_theraml_pm = {
+    .freeze     = amlogic_thermal_freeze,
+    .thaw       = amlogic_thermal_thaw,
+    .restore    = amlogic_thermal_restore,
+};
+#endif
+
 static int amlogic_thermal_probe(struct platform_device *pdev)
 {
     int ret, trim_flag;
@@ -1069,29 +1094,13 @@ static int amlogic_thermal_remove(struct platform_device *pdev)
     return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int amlogic_thermal_suspend(struct device *dev)
-{
-    return 0;
-}
-
-static int amlogic_thermal_resume(struct device *dev)
-{
-    return 0;
-}
-
-static SIMPLE_DEV_PM_OPS(amlogic_thermal_pm,
-        amlogic_thermal_suspend, amlogic_thermal_resume);
-#define amlogic_thermal_PM	(&amlogic_thermal_pm)
-#else
-#define amlogic_thermal_PM	NULL
-#endif
-
 struct platform_driver amlogic_thermal_driver = {
     .driver = {
         .name   = "amlogic-thermal",
         .owner  = THIS_MODULE,
-        .pm     = amlogic_thermal_PM,
+    #ifdef CONFIG_HIBERNATION
+        .pm     = &amlogic_theraml_pm,
+    #endif
         .of_match_table = of_match_ptr(amlogic_thermal_match),
     },
     .probe = amlogic_thermal_probe,
