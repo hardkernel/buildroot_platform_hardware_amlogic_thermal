@@ -1019,6 +1019,7 @@ static const struct of_device_id amlogic_thermal_match[] = {
     {
         .compatible = "amlogic-thermal",
     },
+    {},
 };
 
 #ifdef CONFIG_HIBERNATION
