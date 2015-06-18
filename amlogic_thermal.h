@@ -101,5 +101,9 @@ void keep_mode_bind(struct  amlogic_thermal_platform_data *, unsigned long , int
 void keep_mode_work(struct amlogic_thermal_platform_data *, int);
 void keep_mode_update_threshold(struct amlogic_thermal_platform_data *, int );
 void keep_mode_temp_level_init(struct amlogic_thermal_platform_data *, struct temp_level *);
+void *aml_get_cdevdata(struct thermal_cooling_device *cdev);
+void aml_set_cdev_update(struct thermal_cooling_device *cdev, bool update);
+void aml_cdev_lockop(struct thermal_cooling_device *cdev, bool lock);
+void aml_cdev_get_cur_state(struct thermal_cooling_device *cdev, unsigned long *ret);
 
 #endif /* __AMLOGIC_THERMAL_H__ */

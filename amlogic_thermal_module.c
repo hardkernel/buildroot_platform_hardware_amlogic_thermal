@@ -38,19 +38,24 @@
 #include <linux/cpu_cooling.h>
 #include <linux/of.h>
 #include <linux/amlogic/saradc.h>
-#include <plat/cpu.h>
 #include <linux/random.h>
 #include <linux/gpu_cooling.h>
 #include <linux/cpucore_cooling.h>
 #include <linux/gpucore_cooling.h>
 #include <linux/thermal_core.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE > KERNEL_VERSION(3, 10, 33)
+#include <linux/amlogic/aml_thermal_hw.h>
+#else
 #include <mach/thermal.h>
+#endif
+#include <linux/version.h>
 #include "amlogic_thermal.h"
 
 #define DBG_VIRTUAL        0
 int thermal_debug_enable = 0;
 int high_temp_protect    = 0;
-atomic_t freq_update_flag; 
+atomic_t freq_update_flag;
 EXPORT_SYMBOL(thermal_debug_enable);
 EXPORT_SYMBOL(high_temp_protect);
 EXPORT_SYMBOL(freq_update_flag);
@@ -74,11 +79,11 @@ static unsigned int report_interval[4] = {};
 #define GET_TRIP(zone) (zone - 2)
 
 static void amlogic_unregister_thermal(struct amlogic_thermal_platform_data *pdata);
-static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata);
+static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata, struct platform_device *pdev);
 
 void thermal_lock(struct mutex *lock)
 {
-    mutex_lock(lock);    
+    mutex_lock(lock);
 }
 EXPORT_SYMBOL(thermal_lock);
 
@@ -121,7 +126,7 @@ static int amlogic_set_mode(struct thermal_zone_device *thermal,
             gpucore_device=pdata->gpucore_cool_dev->devdata;
             gpucore_device->stop_flag=0;
         }
-        if (pdata->keep_mode) {                     // start work 
+        if (pdata->keep_mode) {                     // start work
             schedule_delayed_work(&pdata->thermal_work, msecs_to_jiffies(100));
         }
     }
@@ -154,7 +159,7 @@ static int amlogic_get_trip_type(struct thermal_zone_device *thermal, int trip,
         *type = THERMAL_TRIP_ACTIVE;
     else if(trip == thermal->trips-1)
         *type = THERMAL_TRIP_CRITICAL;
-    else 
+    else
         return -EINVAL;
     return 0;
 }
@@ -280,7 +285,7 @@ static int amlogic_bind(struct thermal_zone_device *thermal,
         for (i = 0; i < pdata->temp_trip_count; i++) {
             if(pdata->tmp_trip[0].cpu_core_num==THERMAL_CSTATE_INVALID)
             {
-                printk("disable cpu cooling device by dtd\n");
+                printk("disable cpucore cooling device by dtd\n");
                 ret = -EINVAL;
                 goto out;
             }
@@ -311,7 +316,7 @@ static int amlogic_bind(struct thermal_zone_device *thermal,
         for (i = 0; i < pdata->temp_trip_count; i++) {
             if(pdata->tmp_trip[0].cpu_core_num==THERMAL_CSTATE_INVALID)
             {
-                printk("disable cpu cooling device by dtd\n");
+                printk("disable gpucore cooling device by dtd\n");
                 ret = -EINVAL;
                 goto out;
             }
@@ -388,7 +393,7 @@ static void thermal_work(struct work_struct *work)
 
 static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogic_thermal_platform_data *pdata)
 {
-    int ret, len, cells; 
+    int ret, len, cells;
     struct property *prop;
     void *buf;
 
@@ -407,17 +412,17 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
         printk("%s, get freq_sample_period failed, us 30 as default\n", __func__);
         pdata->freq_sample_period = 30;
     } else {
-        printk("%s, get freq_sample_period with value:%d\n", __func__, pdata->freq_sample_period);    
+        printk("%s, get freq_sample_period with value:%d\n", __func__, pdata->freq_sample_period);
     }
-    ret = of_property_read_u32_array(pdev->dev.of_node, 
-            "report_time", 
+    ret = of_property_read_u32_array(pdev->dev.of_node,
+            "report_time",
             report_interval, sizeof(report_interval) / sizeof(u32));
     if (ret) {
-        printk("%s, get report_time failed\n", __func__);    
+        printk("%s, get report_time failed\n", __func__);
         goto error;
     } else {
         printk("[virtual_thermal] report interval:%4d, %4d, %4d, %4d\n",
-                report_interval[0], report_interval[1], report_interval[2], report_interval[3]);    
+                report_interval[0], report_interval[1], report_interval[2], report_interval[3]);
     }
     /*
      * read cpu_virtal
@@ -433,9 +438,9 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
         printk("%s, no memory\n", __func__);
         return -ENOMEM;
     }
-    ret = of_property_read_u32_array(pdev->dev.of_node, 
-            "cpu_virtual", 
-            buf, len/sizeof(u32)); 
+    ret = of_property_read_u32_array(pdev->dev.of_node,
+            "cpu_virtual",
+            buf, len/sizeof(u32));
     if (ret) {
         printk("%s, read cpu_virtual failed\n", __func__);
         kfree(buf);
@@ -458,9 +463,9 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
         printk("%s, no memory\n", __func__);
         return -ENOMEM;
     }
-    ret = of_property_read_u32_array(pdev->dev.of_node, 
-            "gpu_virtual", 
-            buf, len/sizeof(u32)); 
+    ret = of_property_read_u32_array(pdev->dev.of_node,
+            "gpu_virtual",
+            buf, len/sizeof(u32));
     if (ret) {
         printk("%s, read gpu_virtual failed\n", __func__);
         kfree(buf);
@@ -473,7 +478,7 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
     printk("cpu_virtal cells:%d, table:\n", cpu_virtual_thermal.count);
     for (len = 0; len < cpu_virtual_thermal.count; len++) {
         printk("%2d, %8d, %4d, %4d, %4d, %4d\n",
-                len, 
+                len,
                 cpu_virtual_thermal.thermal[len].freq,
                 cpu_virtual_thermal.thermal[len].temp_time[0],
                 cpu_virtual_thermal.thermal[len].temp_time[1],
@@ -483,7 +488,7 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
     printk("gpu_virtal cells:%d, table:\n", gpu_virtual_thermal.count);
     for (len = 0; len < gpu_virtual_thermal.count; len++) {
         printk("%2d, %8d, %4d, %4d, %4d, %4d\n",
-                len, 
+                len,
                 gpu_virtual_thermal.thermal[len].freq,
                 gpu_virtual_thermal.thermal[len].temp_time[0],
                 gpu_virtual_thermal.thermal[len].temp_time[1],
@@ -492,18 +497,18 @@ static int aml_virtaul_thermal_probe(struct platform_device *pdev, struct amlogi
     }
 #endif
 
-    pdata->virtual_thermal_en = 1;    
+    pdata->virtual_thermal_en = 1;
     return 0;
 
-error: 
+error:
     pdata->virtual_thermal_en = 0;
     return -1;
 }
 
 static void aml_virtual_thermal_remove(struct amlogic_thermal_platform_data *pdata)
 {
-    kfree(cpu_virtual_thermal.thermal);    
-    kfree(gpu_virtual_thermal.thermal);    
+    kfree(cpu_virtual_thermal.thermal);
+    kfree(gpu_virtual_thermal.thermal);
     pdata->virtual_thermal_en = 0;
 }
 
@@ -519,16 +524,16 @@ static int check_freq_level(struct aml_virtual_thermal_device *dev, unsigned int
             return i + 1;
         }
     }
-    return 0; 
+    return 0;
 }
 
-static int check_freq_level_cnt(unsigned int cnt) 
+static int check_freq_level_cnt(unsigned int cnt)
 {
     int i;
 
     if (cnt >= report_interval[3]) {
-        return  3; 
-    } 
+        return  3;
+    }
     for (i = 0; i < 3; i++) {
         if (cnt >= report_interval[i] && cnt < report_interval[i + 1]) {
             return i;
@@ -544,17 +549,17 @@ static unsigned long aml_cal_virtual_temp(struct amlogic_thermal_platform_data *
     static unsigned int cpu_temp = 40, gpu_temp = 40;                   // default set to 40 when at homescreen
     unsigned int curr_cpu_avg_freq,   curr_gpu_avg_freq;
     int curr_cpu_freq_level, curr_gpu_freq_level;
-    int cnt_level, level_diff; 
+    int cnt_level, level_diff;
     int temp_update = 0, final_temp;
 
     /*
-     * CPU temp 
+     * CPU temp
      */
     if (atomic_read(&freq_update_flag)) {
-        curr_cpu_avg_freq = pdata->monitor.avg_cpu_freq; 
-        curr_cpu_freq_level = check_freq_level(&cpu_virtual_thermal, curr_cpu_avg_freq); 
+        curr_cpu_avg_freq = pdata->monitor.avg_cpu_freq;
+        curr_cpu_freq_level = check_freq_level(&cpu_virtual_thermal, curr_cpu_avg_freq);
         level_diff = curr_cpu_freq_level - last_cpu_freq_level;
-        if (ABS(level_diff) <= 1) {  // freq change is not large 
+        if (ABS(level_diff) <= 1) {  // freq change is not large
             cpu_freq_level_cnt++;
             cnt_level = check_freq_level_cnt(cpu_freq_level_cnt);
             cpu_temp  = cpu_virtual_thermal.thermal[curr_cpu_freq_level].temp_time[cnt_level];
@@ -563,7 +568,7 @@ static unsigned long aml_cal_virtual_temp(struct amlogic_thermal_platform_data *
                     __func__, curr_cpu_avg_freq, curr_cpu_freq_level, cnt_level, cpu_freq_level_cnt, cpu_temp);
 #endif
         } else {                                                // level not match
-            cpu_temp = cpu_virtual_thermal.thermal[curr_cpu_freq_level].temp_time[0]; 
+            cpu_temp = cpu_virtual_thermal.thermal[curr_cpu_freq_level].temp_time[0];
 #if DBG_VIRTUAL
             printk("%s, cur_freq:%7d, cur_level:%d, last_level:%d, last_cnt_level:%d, cpu_temp:%d\n",
                     __func__, curr_cpu_avg_freq, curr_cpu_freq_level, last_cpu_freq_level, cpu_freq_level_cnt, cpu_temp);
@@ -572,10 +577,10 @@ static unsigned long aml_cal_virtual_temp(struct amlogic_thermal_platform_data *
         }
         last_cpu_freq_level = curr_cpu_freq_level;
 
-        curr_gpu_avg_freq = pdata->monitor.avg_gpu_freq; 
-        curr_gpu_freq_level = check_freq_level(&gpu_virtual_thermal, curr_gpu_avg_freq); 
+        curr_gpu_avg_freq = pdata->monitor.avg_gpu_freq;
+        curr_gpu_freq_level = check_freq_level(&gpu_virtual_thermal, curr_gpu_avg_freq);
         level_diff = curr_gpu_freq_level - last_gpu_freq_level;
-        if (ABS(level_diff) <= 1) {  // freq change is not large 
+        if (ABS(level_diff) <= 1) {  // freq change is not large
             gpu_freq_level_cnt++;
             cnt_level = check_freq_level_cnt(gpu_freq_level_cnt);
             gpu_temp  = gpu_virtual_thermal.thermal[curr_gpu_freq_level].temp_time[cnt_level];
@@ -584,7 +589,7 @@ static unsigned long aml_cal_virtual_temp(struct amlogic_thermal_platform_data *
                     __func__, curr_gpu_avg_freq, curr_gpu_freq_level, cnt_level, gpu_freq_level_cnt, gpu_temp);
 #endif
         } else {                                                // level not match
-            gpu_temp = gpu_virtual_thermal.thermal[curr_gpu_freq_level].temp_time[0]; 
+            gpu_temp = gpu_virtual_thermal.thermal[curr_gpu_freq_level].temp_time[0];
             gpu_freq_level_cnt = 0;
 #if DBG_VIRTUAL
             printk("%s, cur_freq:%7d, cur_level:%d, last_level:%d, gpu_temp:%d\n",
@@ -594,17 +599,17 @@ static unsigned long aml_cal_virtual_temp(struct amlogic_thermal_platform_data *
         last_gpu_freq_level = curr_gpu_freq_level;
 
         atomic_set(&freq_update_flag, 0);
-        temp_update = 1; 
+        temp_update = 1;
     }
 
     if (cpu_temp <= 0 && gpu_temp <= 0) {
         printk("%s, Bug here, cpu & gpu temp can't be 0, cpu_temp:%d, gpu_temp:%d\n", __func__, cpu_temp, gpu_temp);
-        final_temp = 40;    
+        final_temp = 40;
     }
     final_temp = (cpu_temp >= gpu_temp ? cpu_temp : gpu_temp);
     if (temp_update) {
 #if DBG_VIRTUAL
-        printk("final temp:%d\n", final_temp);    
+        printk("final temp:%d\n", final_temp);
 #endif
     }
     return final_temp;
@@ -616,13 +621,13 @@ static int amlogic_get_temp(struct thermal_zone_device *thermal,
 {
     struct amlogic_thermal_platform_data *pdata = thermal->devdata;
 
-    if (pdata->trim_flag) { 
+    if (pdata->trim_flag) {
         *temp = (unsigned long)get_cpu_temp();
         pdata->current_temp = *temp;
     } else if (pdata->virtual_thermal_en) {
-        *temp = aml_cal_virtual_temp(pdata); 
+        *temp = aml_cal_virtual_temp(pdata);
     } else {
-        *temp = 45;                     // fix cpu temperature to 45 if not trimed && disable virtual thermal    
+        *temp = 45;                     // fix cpu temperature to 45 if not trimed && disable virtual thermal
     }
     return 0;
 }
@@ -634,7 +639,7 @@ static int amlogic_get_trend(struct thermal_zone_device *thermal,
     return 1;
 }
 /* Operation callback functions for thermal zone */
-static struct thermal_zone_device_ops const amlogic_dev_ops = {
+static struct thermal_zone_device_ops amlogic_dev_ops = {
     .bind = amlogic_bind,
     .unbind = amlogic_unbind,
     .get_temp = amlogic_get_temp,
@@ -668,9 +673,9 @@ static ssize_t thermal_debug_store(struct device *dev, struct device_attribute *
     int32_t data = simple_strtol(buf, NULL, 10);
 
     if (data) {
-        thermal_debug_enable = 1;    
+        thermal_debug_enable = 1;
     } else {
-        thermal_debug_enable = 0;    
+        thermal_debug_enable = 0;
     }
     return count;
 }
@@ -710,7 +715,7 @@ static ssize_t keep_mode_threshold_store(struct device *dev, struct device_attri
     int32_t data = simple_strtol(buf, NULL, 10);
 
     if (data > 200) {
-        printk("input is %d, seems too large, invalid\n", data);    
+        printk("input is %d, seems too large, invalid\n", data);
     }
     keep_mode_update_threshold(pdata, data);
     printk("set keep_mode_threshold to %d\n", data);
@@ -730,9 +735,9 @@ static ssize_t high_temp_protect_store(struct device *dev, struct device_attribu
 
     high_temp_protect = data ? 1 : 0;
     if (high_temp_protect) {
-        pdata->tmp_trip[1].temperature = pdata->keep_mode_threshold + 25; 
+        pdata->tmp_trip[1].temperature = pdata->keep_mode_threshold + 25;
     } else {
-        pdata->tmp_trip[1].temperature = 260; 
+        pdata->tmp_trip[1].temperature = 260;
     }
     printk("high temperature protect %s\n", high_temp_protect ? "enabled" : "disabled");
     return count;
@@ -743,13 +748,13 @@ static struct device_attribute amlogic_thermal_attr[] = {
     __ATTR(max_cpu_num, 0444, max_cpu_num_show, NULL),
 #endif
     __ATTR(thermal_debug, 0644, thermal_debug_show, thermal_debug_store),
-    __ATTR(keep_mode, 0644, keep_mode_show, keep_mode_store), 
+    __ATTR(keep_mode, 0644, keep_mode_show, keep_mode_store),
     __ATTR(keep_mode_threshold, 0644, keep_mode_threshold_show, keep_mode_threshold_store),
     __ATTR(high_temp_protect, 0644, high_temp_protect_show, high_temp_protect_store)
 };
 
 /* Register with the in-kernel thermal management */
-static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata)
+static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata, struct platform_device *pdev)
 {
     int ret=0, j;
     struct cpumask mask_val;
@@ -770,8 +775,13 @@ static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata)
     }
 
     pdata->therm_dev = thermal_zone_device_register(pdata->name,
-            pdata->temp_trip_count, ((1 << pdata->temp_trip_count) - 1), pdata, &amlogic_dev_ops, NULL, 0,
-            pdata->idle_interval);
+                                                    pdata->temp_trip_count,
+                                                    ((1 << pdata->temp_trip_count) - 1),
+                                                    pdata,
+                                                    &amlogic_dev_ops,
+                                                    NULL,
+                                                    0,
+                                                    pdata->idle_interval);
 
     if (IS_ERR(pdata->therm_dev)) {
         pr_err("Failed to register thermal zone device, err:%p\n", pdata->therm_dev);
@@ -782,7 +792,7 @@ static int amlogic_register_thermal(struct amlogic_thermal_platform_data *pdata)
     if (pdata->keep_mode) {                                     // create sysfs for keep_mode
         for (j = 0; j < ARRAY_SIZE(amlogic_thermal_attr); j++) {
             device_create_file(&pdata->therm_dev->device, &amlogic_thermal_attr[j]);
-        } 
+        }
     }
     pr_info("amlogic: Kernel Thermal management registered\n");
 
@@ -867,7 +877,7 @@ int fix_to_freq(int freqold,int descend)
 
 void thermal_atomic_set(atomic_t *a, int value)
 {
-    atomic_set(a, 1);    
+    atomic_set(a, 1);
 }
 EXPORT_SYMBOL(thermal_atomic_set);
 
@@ -896,7 +906,7 @@ static struct amlogic_thermal_platform_data * amlogic_thermal_init_from_dts(stru
         /*
          * process for KEEP_MODE and virtual thermal
          * Logic: If virtual thermal is enabled, then ignore keep_mode
-         *        
+         *
          */
         pdata->trim_flag = trim_flag;
         if (!pdata->trim_flag) {                                // chip is not trimmed, use virtual thermal
@@ -935,7 +945,7 @@ static struct amlogic_thermal_platform_data * amlogic_thermal_init_from_dts(stru
             dev_err(&pdev->dev, "read %s length error\n","trip_point");
             goto err;
         }
-        if (pdata->keep_mode) { 
+        if (pdata->keep_mode) {
             pdata->temp_trip_count = 2;
         } else {
             pdata->temp_trip_count=val/cells/sizeof(u32);
@@ -963,7 +973,7 @@ static struct amlogic_thermal_platform_data * amlogic_thermal_init_from_dts(stru
             printk("fixing high_freq=%d to ",tmp_level[i].cpu_high_freq);
             tmp_level[i].cpu_high_freq=fix_to_freq(tmp_level[i].cpu_high_freq,descend);
             pdata->tmp_trip[i].cpu_lower_level=cpufreq_cooling_get_level(0,tmp_level[i].cpu_high_freq);
-            printk("%d at trip point %d,level=%d\n",tmp_level[i].cpu_high_freq,i,pdata->tmp_trip[i].cpu_lower_level);	
+            printk("%d at trip point %d,level=%d\n",tmp_level[i].cpu_high_freq,i,pdata->tmp_trip[i].cpu_lower_level);
 
             printk("fixing low_freq=%d to ",tmp_level[i].cpu_low_freq);
             tmp_level[i].cpu_low_freq=fix_to_freq(tmp_level[i].cpu_low_freq,descend);
@@ -997,7 +1007,7 @@ static struct amlogic_thermal_platform_data * amlogic_thermal_init_from_dts(stru
             kfree(tmp_level);
         printk("%s, %d\n", __func__, __LINE__);
         return pdata;
-    }	
+    }
 err:
     if(tmp_level)
         kfree(tmp_level);
@@ -1017,7 +1027,7 @@ static struct amlogic_thermal_platform_data * amlogic_thermal_initialize(struct 
 
 static const struct of_device_id amlogic_thermal_match[] = {
     {
-        .compatible = "amlogic-thermal",
+        .compatible = "amlogic, amlogic-thermal",
     },
     {},
 };
@@ -1054,8 +1064,9 @@ static int amlogic_thermal_probe(struct platform_device *pdev)
 
     ret=thermal_firmware_init();
     if(ret<0){
-        printk("%s, this chip is not trimmed, use virtual thermal\n", __func__);
+        printk("%s, this chip is not trimmed, can't use thermal\n", __func__);
         trim_flag = 0;
+        return -ENODEV;
     }else{
         printk("%s, this chip is trimmed, use thermal\n", __func__);
         trim_flag = 1;
@@ -1070,7 +1081,7 @@ static int amlogic_thermal_probe(struct platform_device *pdev)
     mutex_init(&pdata->lock);
     pdev->dev.platform_data=pdata;
     platform_set_drvdata(pdev, pdata);
-    ret = amlogic_register_thermal(pdata);
+    ret = amlogic_register_thermal(pdata, pdev);
     if (ret) {
         dev_err(&pdev->dev, "Failed to register thermal interface\n");
         goto err;
@@ -1104,19 +1115,47 @@ struct platform_driver amlogic_thermal_driver = {
     #endif
         .of_match_table = of_match_ptr(amlogic_thermal_match),
     },
-    .probe = amlogic_thermal_probe,
-    .remove	= amlogic_thermal_remove,
+    .probe  = amlogic_thermal_probe,
+    .remove = amlogic_thermal_remove,
 };
 
-static int __init amlogic_thermal_driver_init(void) 
-{ 
-	return platform_driver_register(&(amlogic_thermal_driver)); 
-} 
-late_initcall(amlogic_thermal_driver_init); 
-static void __exit amlogic_thermal_driver_exit(void) 
-{ 
-	platform_driver_unregister(&(amlogic_thermal_driver) ); 
-} 
+void *aml_get_cdevdata(struct thermal_cooling_device *cdev)
+{
+    return cdev->devdata;
+}
+EXPORT_SYMBOL(aml_get_cdevdata);
+
+void aml_set_cdev_update(struct thermal_cooling_device *cdev, bool update)
+{
+    cdev->updated = update;
+}
+EXPORT_SYMBOL(aml_set_cdev_update);
+
+void aml_cdev_lockop(struct thermal_cooling_device *cdev, bool lock)
+{
+    if (lock) {
+        thermal_lock(&cdev->lock);
+    } else {
+        thermal_unlock(&cdev->lock);
+    }
+}
+EXPORT_SYMBOL(aml_cdev_lockop);
+
+void aml_cdev_get_cur_state(struct thermal_cooling_device *cdev, unsigned long *ret)
+{
+    cdev->ops->get_cur_state(cdev, ret);
+}
+EXPORT_SYMBOL(aml_cdev_get_cur_state);
+
+static int __init amlogic_thermal_driver_init(void)
+{
+    return platform_driver_register(&(amlogic_thermal_driver));
+}
+late_initcall(amlogic_thermal_driver_init);
+static void __exit amlogic_thermal_driver_exit(void)
+{
+    platform_driver_unregister(&(amlogic_thermal_driver) );
+}
 module_exit(amlogic_thermal_driver_exit);
 
 MODULE_DESCRIPTION("amlogic thermal Driver");
