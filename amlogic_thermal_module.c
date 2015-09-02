@@ -53,6 +53,7 @@
 #include "amlogic_thermal.h"
 
 #define DBG_VIRTUAL        0
+#define MIN_TEMP           (-273)
 int thermal_debug_enable = 0;
 int high_temp_protect    = 0;
 atomic_t freq_update_flag;
@@ -385,7 +386,8 @@ static void thermal_work(struct work_struct *work)
     if (policy) {
         cpu_freq = policy->cur;
     }
-    keep_mode_work(pdata, cpu_freq);
+    if (pdata->temp_valid)
+        keep_mode_work(pdata, cpu_freq);
     if (pdata->mode == THERMAL_DEVICE_ENABLED) {             // no need to do this work again if thermal disabled
         schedule_delayed_work(&pdata->thermal_work, msecs_to_jiffies(100));
     }
@@ -620,8 +622,15 @@ static int amlogic_get_temp(struct thermal_zone_device *thermal,
         unsigned long *temp)
 {
     struct amlogic_thermal_platform_data *pdata = thermal->devdata;
+    int tmp;
 
     if (pdata->trim_flag) {
+        tmp = get_cpu_temp();
+        if (tmp < MIN_TEMP) {
+            pdata->temp_valid = 0;
+            return -EINVAL;
+        }
+        pdata->temp_valid = 1;
         *temp = (unsigned long)get_cpu_temp();
         pdata->current_temp = *temp;
     } else if (pdata->virtual_thermal_en) {

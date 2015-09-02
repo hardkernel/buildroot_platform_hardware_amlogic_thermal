@@ -51,6 +51,7 @@ struct amlogic_thermal_platform_data {
     const char *name;
     struct temp_trip *tmp_trip;
     unsigned int temp_trip_count;
+    unsigned int temp_valid;
     unsigned int current_temp;
     unsigned int idle_interval;
     unsigned int trim_flag;
