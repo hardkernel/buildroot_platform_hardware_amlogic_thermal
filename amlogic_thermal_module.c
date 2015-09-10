@@ -378,14 +378,10 @@ EXPORT_SYMBOL(thermal_alloc);
 
 static void thermal_work(struct work_struct *work)
 {
-    struct cpufreq_policy *policy = cpufreq_cpu_get(0);
     struct amlogic_thermal_platform_data *pdata;
-    int cpu_freq = 0;
+    int cpu_freq = cpufreq_quick_get(0);
 
     pdata = container_of((struct delayed_work *)work, struct amlogic_thermal_platform_data, thermal_work);
-    if (policy) {
-        cpu_freq = policy->cur;
-    }
     if (pdata->temp_valid)
         keep_mode_work(pdata, cpu_freq);
     if (pdata->mode == THERMAL_DEVICE_ENABLED) {             // no need to do this work again if thermal disabled
