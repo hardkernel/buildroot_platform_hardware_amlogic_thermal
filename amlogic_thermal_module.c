@@ -69,6 +69,7 @@ EXPORT_SYMBOL(freq_update_flag);
 static struct aml_virtual_thermal_device cpu_virtual_thermal = {};
 static struct aml_virtual_thermal_device gpu_virtual_thermal = {};
 static unsigned int report_interval[4] = {};
+static int (*gpu_freq_level)(int ) = NULL;
 
 /* CPU Zone information */
 #define PANIC_ZONE      4
@@ -206,6 +207,13 @@ static int amlogic_get_crit_temp(struct thermal_zone_device *thermal,
     return ret;
 }
 
+int gpu_get_freq_level(int freq)
+{
+    if (gpu_freq_level)
+        return gpu_freq_level(freq);
+    else
+        return -1;
+}
 
 /* Bind callback functions for thermal zone */
 static int amlogic_bind(struct thermal_zone_device *thermal,
@@ -252,6 +260,8 @@ static int amlogic_bind(struct thermal_zone_device *thermal,
                 ret = -EINVAL;
                 pr_info("invalidate pointer %p\n",gpufreq_dev->get_gpu_freq_level);
                 goto out;
+            } else {
+                gpu_freq_level = gpufreq_dev->get_gpu_freq_level;
             }
             pdata->tmp_trip[i].gpu_lower_level=gpufreq_dev->get_gpu_freq_level(pdata->tmp_trip[i].gpu_upper_freq);
             pdata->tmp_trip[i].gpu_upper_level=gpufreq_dev->get_gpu_freq_level(pdata->tmp_trip[i].gpu_lower_freq);
