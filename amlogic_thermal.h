@@ -61,7 +61,10 @@ struct amlogic_thermal_platform_data {
     unsigned int keep_mode_ini_state[4];
     unsigned int keep_mode_cur_state[4];
     unsigned int keep_mode_max_state[4];
+    unsigned int keep_mode_min_state[4];
     unsigned int keep_mode_max_range[4];
+    unsigned int keep_mode_min_range[4];
+    unsigned int keep_min_exist;
     unsigned int freq_sample_period;
     struct record_buf op_buf;
     struct cpu_stat_monitor monitor;
